@@ -1,5 +1,6 @@
 const { OpenAI } = require('openai');
 const db = require('../config/db');
+const orderService = require('./order.service');
 require('dotenv').config();
 
 const openai = new OpenAI({
@@ -42,8 +43,8 @@ ORDEM OBRIGATÓRIA (LEIS):
 3. LOCAL: Se entrega, PEÇA O ENDEREÇO. 🚨 PROIBIDO resumo sem endereço se for entrega.
 4. RESUMO: Chame 'obter_resumo_financeiro'. Peça confirmação.
 5. PAGAMENTO: "Pix, Cartão ou Dinheiro?".
-6. TROCO: Se dinheiro, pergunte: "Troco para quanto?". 🚨 PROIBIDO finalizar sem troco se for dinheiro.
-7. FINALIZAR: Chame 'finalizar_pedido'.
+6. TROCO: Se dinheiro, pergunte: "Troco para quanto?". 🚨 APÓS o usuário informar o valor, chame IMEDIATAMENTE 'finalizar_pedido' com o troco calculado. NÃO pergunte se pode finalizar.
+7. FINALIZAR: Chame 'finalizar_pedido' para encerrar.
 
 COORDENADAS LOJA: -17.7539148, -48.6388202. JAMAIS cite IDs técnicos.`;
 
@@ -88,7 +89,7 @@ async function processMessage(phone, text) {
                 type: "function",
                 function: {
                     name: "finalizar_pedido",
-                    description: "Registra o pedido no banco de dados. Só use APÓS o cliente confirmar o resumo.",
+                    description: "AÇÃO OBRIGATÓRIA: Registra o pedido no banco. Chame IMEDIATAMENTE após o cliente confirmar forma de pagamento e troco.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -96,7 +97,7 @@ async function processMessage(phone, text) {
                             tipo_pedido: { type: "string", enum: ["entrega", "retirada", "mesa"] },
                             endereco_entrega: { type: "string" },
                             forma_pagamento: { type: "string", enum: ["pix", "cartão", "dinheiro"] },
-                            troco_para: { type: "number" },
+                            troco_para: { type: "number", description: "Valor total da nota que o cliente deu (Ex: 100.00). Use apenas se for dinheiro." },
                             numero_mesa: { type: "string" },
                             observacao: { type: "string" }
                         },
@@ -139,6 +140,13 @@ async function processMessage(phone, text) {
             }
 
             if (action === 'finalizar_pedido') {
+                // FALLBACK DE TROCO: Se a IA esqueceu o argumento mas o usuário informou na conversa
+                if (args.forma_pagamento === 'dinheiro' && (!args.troco_para || args.troco_para === 0)) {
+                    const chatLog = sessions[phone].filter(m => m.role === 'user').map(m => m.content).join(" ");
+                    const match = chatLog.match(/troco\s*(?:para|pra)?\s*(\d+)/i);
+                    if (match) args.troco_para = Number(match[1]);
+                }
+
                 if (args.forma_pagamento === 'dinheiro' && (!args.troco_para || args.troco_para === 0)) {
                     const realChat = sessions[phone].filter(m => m.role !== 'system').map(m => m.content).join(" ").toLowerCase();
                     if (!realChat.includes("troco")) {
@@ -148,6 +156,12 @@ async function processMessage(phone, text) {
                     }
                 }
                 args.tempo_fechamento_segundos = Math.round((Date.now() - sessions[phone].startTime) / 1000);
+                const res = await orderService.processNewOrder(phone, args);
+                if (!res) {
+                    sessions[phone].push({ role: "tool", tool_call_id: toolCall.id, content: "Erro interno ao processar pedido no banco. Tente novamente." });
+                    continue;
+                }
+                
                 delete sessions[phone];
                 return { isOrderCompleted: true, orderData: args, replyText: "Pedido confirmado! 🍕🔥" };
             }

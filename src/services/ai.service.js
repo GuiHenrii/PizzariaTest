@@ -43,7 +43,7 @@ ORDEM OBRIGATÓRIA (LEIS):
 3. LOCAL: Se entrega, PEÇA O ENDEREÇO. 🚨 PROIBIDO resumo sem endereço se for entrega.
 4. RESUMO: Chame 'obter_resumo_financeiro'. Peça confirmação.
 5. PAGAMENTO: "Pix, Cartão ou Dinheiro?".
-6. TROCO: Se dinheiro, pergunte: "Troco para quanto?". 🚨 APÓS o usuário informar o valor, chame IMEDIATAMENTE 'finalizar_pedido' com o troco calculado. NÃO pergunte se pode finalizar.
+6. TROCO: Se dinheiro, pergunte: "precisa de troco pra qual valor?". 🚨 APÓS o usuário informar o valor, chame IMEDIATAMENTE 'finalizar_pedido' com o troco calculado. NÃO pergunte se pode finalizar.
 7. FINALIZAR: Chame 'finalizar_pedido' para encerrar.
 
 COORDENADAS LOJA: -17.7539148, -48.6388202. JAMAIS cite IDs técnicos.`;
@@ -164,7 +164,7 @@ async function processMessage(phone, text) {
                 if (args.forma_pagamento === 'dinheiro' && (!args.troco_para || args.troco_para === 0)) {
                     const realChat = sessions[phone].filter(m => m.role !== 'system').map(m => m.content).join(" ").toLowerCase();
                     if (!realChat.includes("troco")) {
-                        const err = "ERRO: O cliente escolheu DINHEIRO! Você DEVE perguntar 'Troco para quanto?' antes de finalizar.";
+                        const err = "ERRO: O cliente escolheu DINHEIRO! Você DEVE perguntar 'precisa de troco pra qual valor?' antes de finalizar.";
                         sessions[phone].push({ role: "tool", tool_call_id: toolCall.id, content: err });
                         continue;
                     }

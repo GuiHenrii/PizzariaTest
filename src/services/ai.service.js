@@ -147,6 +147,20 @@ async function processMessage(phone, text) {
                     if (match) args.troco_para = Number(match[1]);
                 }
 
+                // FALLBACK DE MESA: Evita amnésia da IA sob estresse
+                if (args.tipo_pedido === 'mesa' && (!args.numero_mesa || args.numero_mesa.trim() === '')) {
+                    const chatLog = sessions[phone].filter(m => m.role === 'user').map(m => m.content).join(" ").toLowerCase();
+                    // Captura 'mesa 5', 'mesa 10', 'mesa 02'
+                    const matchMesa = chatLog.match(/mesa\s*(\d+)/i);
+                    if (matchMesa) {
+                        args.numero_mesa = matchMesa[1];
+                    } else {
+                        const err = "ERRO: O cliente está na mesa, mas você esqueceu de perguntar ou preencher QUAL É O NÚMERO DA MESA. Pergunte agora e não finalize sem isso!";
+                        sessions[phone].push({ role: "tool", tool_call_id: toolCall.id, content: err });
+                        continue;
+                    }
+                }
+
                 if (args.forma_pagamento === 'dinheiro' && (!args.troco_para || args.troco_para === 0)) {
                     const realChat = sessions[phone].filter(m => m.role !== 'system').map(m => m.content).join(" ").toLowerCase();
                     if (!realChat.includes("troco")) {
